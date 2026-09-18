@@ -68,11 +68,11 @@ async function generateWithClaude({ keyword, category, product }) {
   return parseTitleAndContent(fullText, keyword);
 }
 
-async function generateWithGemini({ keyword, category, product }) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const systemPrompt = buildSystemPrompt({ keyword, category, product });
-  const userPrompt = `트렌드 키워드: ${keyword}\n\n이 키워드를 주제로 블로그 글을 작성해줘. 글 제목도 하나 지어서 맨 앞줄에 "TITLE: ..." 형식으로 알려줘.`;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
+async function callGeminiOnce({ apiKey, systemPrompt, userPrompt }) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`,
     {
@@ -87,7 +87,9 @@ async function generateWithGemini({ keyword, category, product }) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Gemini API 호출 실패 (${res.status}): ${text}`);
+    const err = new Error(`Gemini API 호출 실패 (${res.status}): ${text}`);
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();
@@ -98,7 +100,35 @@ async function generateWithGemini({ keyword, category, product }) {
     throw new Error("Gemini 응답이 비어 있습니다 (안전 필터에 걸렸을 수 있어요).");
   }
 
-  return parseTitleAndContent(fullText, keyword);
+  return fullText;
+}
+
+async function generateWithGemini({ keyword, category, product }) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const systemPrompt = buildSystemPrompt({ keyword, category, product });
+  const userPrompt = `트렌드 키워드: ${keyword}\n\n이 키워드를 주제로 블로그 글을 작성해줘. 글 제목도 하나 지어서 맨 앞줄에 "TITLE: ..." 형식으로 알려줘.`;
+
+  const maxAttempts = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const fullText = await callGeminiOnce({ apiKey, systemPrompt, userPrompt });
+      return parseTitleAndContent(fullText, keyword);
+    } catch (err) {
+      lastError = err;
+      // 503(일시적 과부하) 또는 429(요청 과다)일 때만 재시도, 그 외 오류는 바로 중단
+      const retryable = err.status === 503 || err.status === 429;
+      if (!retryable || attempt === maxAttempts) break;
+      const waitMs = attempt * 10000; // 10초, 20초로 점점 늘려가며 대기
+      console.warn(
+        `⚠️  Gemini 일시적 오류(${err.status}), ${waitMs / 1000}초 후 재시도 (${attempt}/${maxAttempts})`
+      );
+      await sleep(waitMs);
+    }
+  }
+
+  throw lastError;
 }
 
 function generateWithTemplate({ keyword, category, product }) {
