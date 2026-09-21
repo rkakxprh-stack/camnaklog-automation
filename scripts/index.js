@@ -82,8 +82,9 @@ async function main() {
   const { title, content } = await generateArticle({ keyword, category, product: matchedProduct });
   console.log(`생성된 제목: ${title}`);
 
-  const status = matchedProduct ? process.env.PUBLISH_STATUS || "draft" : "draft";
-
+  // 지금은 트래픽 확보가 우선이라, 쿠팡 링크 유무와 상관없이 PUBLISH_STATUS를 따름
+  const status = process.env.PUBLISH_STATUS || "draft";
+  
   const result = await publishPost({ title, content, status, category });
 
   console.log(`✅ 처리 완료 (${status}): ${result.URL || result.short_URL}`);
