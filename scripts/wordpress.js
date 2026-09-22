@@ -3,9 +3,10 @@
 // 문서: https://developer.wordpress.com/docs/api/1.1/post/sites/%24site/posts/new/
 //
 // 참고: 워드프레스닷컴은 신규 인증 앱에서 온 글을 생성 응답에는 "publish"라고
-// 표시해놓고, 몇 초 뒤 스팸 방지 시스템이 조용히 draft로 되돌리는 경우가 있습니다.
-// 그래서 생성 응답을 신뢰하지 않고, publish를 요청한 경우 상태가 실제로
-// "publish"로 확정될 때까지 지수 백오프로 여러 번 재확인/재발행합니다.
+// 표시해놓고, 몇 초~몇십 분 뒤 스팸 방지 시스템이 조용히 draft로 되돌리는 경우가
+// 있습니다. 그래서 생성 응답을 신뢰하지 않고, publish를 요청한 경우 상태가 실제로
+// "publish"로 확정될 때까지 지수 백오프로 여러 번 재확인/재발행합니다. (그래도
+// 그 이후에 또 늦게 되돌아갈 수 있어서, 별도 sweep-drafts.js가 안전망 역할을 합니다.)
 
 const SITE = process.env.WPCOM_SITE; // 예: camnaklog2.wordpress.com
 
@@ -42,9 +43,29 @@ function sleep(ms) {
 }
 
 /**
+ * 외부 이미지 URL(알리익스프레스 상품 이미지 등)을 워드프레스 미디어 라이브러리로
+ * 사이드로드(sideload)해서 정식 미디어 아이템으로 등록합니다.
+ * 실패해도 전체 발행을 막지 않도록, 실패 시 null을 반환하고 경고만 남깁니다.
+ */
+async function uploadMediaFromUrl(imageUrl) {
+  try {
+    const body = new URLSearchParams();
+    body.append("media_urls[]", imageUrl);
+    const result = await callPostsApi("/media/new", body);
+    const media = result?.media?.[0];
+    if (!media || !media.ID) {
+      console.warn("⚠️  대표 이미지 업로드 응답에 media ID가 없습니다:", JSON.stringify(result));
+      return null;
+    }
+    return media.ID;
+  } catch (err) {
+    console.warn(`⚠️  대표 이미지 업로드 실패 (계속 진행합니다): ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * 글이 실제로 "publish" 상태로 확정될 때까지 재확인 + 필요시 재발행을 반복합니다.
- * 스팸 필터가 늦게 개입하거나 재발행 후 또 되돌리는 경우까지 커버하기 위해
- * 단발성 체크 대신 지수 백오프 루프를 사용합니다.
  */
 async function ensurePublished(postId) {
   const delays = [5000, 10000, 20000, 40000]; // 5s → 10s → 20s → 40s, 총 4번 확인
@@ -66,7 +87,6 @@ async function ensurePublished(postId) {
     await callPostsApi(`/posts/${postId}`, new URLSearchParams({ status: "publish" }));
   }
 
-  // 여기까지 왔다는 건 마지막 재발행 직후 상태를 아직 확인 안 했다는 뜻이므로 한 번 더 확인
   const finalCheck = await callPostsApi(`/posts/${postId}`, null, "GET");
   if (finalCheck.status !== "publish") {
     throw new Error(
@@ -78,17 +98,23 @@ async function ensurePublished(postId) {
 
 /**
  * 워드프레스에 새 글 발행
+ * @param {string} featuredImageUrl - 대표 이미지로 쓸 외부 이미지 URL (선택)
  */
-async function publishPost({ title, content, status = "draft", category, date }) {
+async function publishPost({ title, content, status = "draft", category, date, featuredImageUrl }) {
+  let featuredMediaId = null;
+  if (featuredImageUrl) {
+    featuredMediaId = await uploadMediaFromUrl(featuredImageUrl);
+  }
+
   const body = new URLSearchParams({ title, content, status });
   if (category) body.append("categories", category);
   if (date) body.append("date", date);
+  if (featuredMediaId) body.append("featured_image", String(featuredMediaId));
 
   let result = await callPostsApi("/posts/new", body);
   const postId = result.ID || result.id;
 
   if (postId && status === "publish") {
-    // 생성 직후 응답은 신뢰하지 않고, 실제로 publish가 확정될 때까지 재확인/재발행
     result = await ensurePublished(postId);
   }
 
