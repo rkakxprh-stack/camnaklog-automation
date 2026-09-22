@@ -5,8 +5,13 @@
 // AI는 "본문 서술"만 담당하고, 이미지/가격/링크가 들어가는 비교 박스는 코드가
 // 직접 조립합니다 (제휴 링크·가격 정확도가 중요해서 AI가 만들게 하지 않음).
 
-const DISCLOSURE =
-  "<p><em>이 포스팅은 알리익스프레스 어필리에이트 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</em></p>";
+const DISCLOSURE = `<!-- wp:group {"style":{"border":{"radius":"8px"},"spacing":{"padding":{"top":"var:preset|spacing|20","bottom":"var:preset|spacing|20","left":"var:preset|spacing|30","right":"var:preset|spacing|30"}}},"backgroundColor":"accent-3","layout":{"type":"constrained"}} -->
+<div class="wp-block-group has-accent-3-background-color has-background" style="border-radius:8px;padding-top:var(--wp--preset--spacing--20);padding-right:var(--wp--preset--spacing--30);padding-bottom:var(--wp--preset--spacing--20);padding-left:var(--wp--preset--spacing--30)">
+<!-- wp:paragraph {"textColor":"contrast","fontSize":"small"} -->
+<p class="has-contrast-color has-text-color has-small-font-size"><strong>📢 유료 광고 고지</strong> — 이 포스팅은 알리익스프레스 파트너스 활동의 일환으로 작성되었으며, 이 글을 통한 구매 시 일정액의 수수료를 제공받습니다.</p>
+<!-- /wp:paragraph -->
+</div>
+<!-- /wp:group -->`;
 
 function escapeHtml(str = "") {
   return String(str)
@@ -93,8 +98,7 @@ ${productLines}
 - 이 글은 "이 중에 뭘 사야 하나 고민하는 사람"을 위한 비교/추천 글이야. 각 상품이 어떤 상황·어떤 사람에게 맞는지 구체적으로 비교해서 판단을 내려줘 ("바쁜 아침엔 1번이 낫고, 가성비만 보면 3번이다" 처럼).
 - 배송(해외직구라 시간 걸림)까지 감안해서 솔직하게 써.
 - 결과는 워드프레스 구텐베르크 블록 HTML 마크업으로 출력해 (<!-- wp:paragraph --> 등 블록 주석 포함), h2 소제목 위주, h1은 쓰지 마.
-- 글 맨 처음에는 반드시 이 문장을 그대로 포함해: "${DISCLOSURE}"
-- 이미지, 버튼, 링크는 절대 직접 만들지 마 (본문 서술만 작성하면, 뒤에 코드가 비교 박스를 자동으로 붙여).
+- 광고 고지문, 이미지, 버튼, 링크는 절대 직접 만들지 마 (본문 서술만 작성하면, 코드가 앞뒤로 고지문과 비교 박스를 자동으로 붙여).
 - 과장광고나 근거 없는 수치는 쓰지 마.
 - 분량은 800~1200자 내외.`;
 }
@@ -191,10 +195,6 @@ function generateWithTemplate({ keyword, category, products }) {
   const title = `${keyword} 추천 비교 (${products.length}개)`;
   const content = `
 <!-- wp:paragraph -->
-<p>${DISCLOSURE}</p>
-<!-- /wp:paragraph -->
-
-<!-- wp:paragraph -->
 <p>[✏️ AI 글쓰기 API 키가 없어 최소 뼈대만 생성됐어요. "${keyword}" 관련 실제 비교 내용을 채워 넣어주세요.]</p>
 <!-- /wp:paragraph -->
   `.trim();
@@ -232,7 +232,7 @@ async function generateArticle({ keyword, category, products }) {
 
   return {
     title: result.title,
-    content: `${result.content}\n\n${comparisonBlock}`,
+    content: `${DISCLOSURE}\n\n${result.content}\n\n${comparisonBlock}`,
     excerpt,
   };
 }
