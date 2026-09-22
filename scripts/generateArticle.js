@@ -228,7 +228,37 @@ async function generateArticle({ keyword, category, products }) {
     }))
   );
 
-  return { title: result.title, content: `${result.content}\n\n${comparisonBlock}` };
+  const excerpt = buildExcerpt(result.content);
+
+  return {
+    title: result.title,
+    content: `${result.content}\n\n${comparisonBlock}`,
+    excerpt,
+  };
+}
+
+/**
+ * 홈 화면 발췌(excerpt)에 광고 고지문이 섞여 나오지 않도록,
+ * 고지문 문단을 제외한 본문에서 첫 문단을 뽑아 발췌를 만듭니다.
+ */
+function buildExcerpt(rawContent) {
+  // HTML 태그 제거
+  const plainParagraphs = rawContent
+    .replace(/<!--[\s\S]*?-->/g, "") // Gutenberg 블록 주석 제거
+    .split(/<\/p>/i)
+    .map((p) => p.replace(/<[^>]+>/g, "").trim())
+    .filter(Boolean);
+
+  // 고지문(수수료 고지)이 들어간 문단은 건너뛰고, 그다음 실제 본문 문단을 사용
+  const firstRealParagraph =
+    plainParagraphs.find((p) => !p.includes("어필리에이트") && !p.includes("수수료")) ||
+    plainParagraphs[0] ||
+    "";
+
+  const MAX_LEN = 110;
+  return firstRealParagraph.length > MAX_LEN
+    ? firstRealParagraph.slice(0, MAX_LEN - 1) + "…"
+    : firstRealParagraph;
 }
 
 module.exports = { generateArticle };
