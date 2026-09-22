@@ -1,12 +1,18 @@
 // index.js
 // 니치(해외직구 꿀템) 자동화 메인 스크립트
 // 실행: node scripts/index.js
+//
+// 변경점: 상품 1개만 골라 후기 쓰던 구조에서, 상품 여러 개(기본 4개)를 비교하는
+// 구조로 전환. 대표 이미지도 함께 업로드합니다.
 
 const path = require("path");
 const niches = require(path.join(__dirname, "..", "config", "niche-keywords.json"));
 const aliexpress = require("./aliexpress.js");
 const { generateArticle } = require("./generateArticle.js");
 const { publishPost } = require("./wordpress.js");
+
+const COMPARE_COUNT = 4; // 비교 박스에 넣을 상품 개수
+const MIN_VALID_PRODUCTS = 2; // 이 개수 미만이면 검색 결과가 부실하다고 보고 다음 키워드로 폴백
 
 function pickTodayIndex(length) {
   const start = new Date(new Date().getFullYear(), 0, 0);
@@ -18,41 +24,49 @@ function pickTodayIndex(length) {
 async function main() {
   const startIdx = pickTodayIndex(niches.length);
   let picked = null;
-  let product = null;
+  let products = null;
 
-  // 오늘 키워드부터 시작해서, 상품 검색이 안 되면 다음 키워드로 순차 폴백
+  // 오늘 키워드부터 시작해서, 상품 검색이 부실하면 다음 키워드로 순차 폴백
   for (let i = 0; i < niches.length; i++) {
     const candidate = niches[(startIdx + i) % niches.length];
     console.log(`검색 시도: "${candidate.keyword}" (${candidate.category})`);
     try {
-      const results = await aliexpress.searchProducts(candidate.keyword, 5);
-      if (results.length > 0) {
+      const results = await aliexpress.searchProducts(candidate.keyword, 8);
+      const valid = results.filter((p) => p.name && p.price && p.url && p.image);
+
+      if (valid.length >= MIN_VALID_PRODUCTS) {
         picked = candidate;
-        product = { productName: results[0].name, price: results[0].price, url: results[0].url };
+        products = valid.slice(0, COMPARE_COUNT);
         break;
       }
-      console.log("검색 결과 없음 → 다음 키워드 시도");
+      console.log(`검색 결과 부족(${valid.length}개) → 다음 키워드 시도`);
     } catch (err) {
       console.warn(`⚠️  검색 실패: ${err.message}`);
     }
   }
 
   if (!picked) {
-    throw new Error("모든 니치 키워드에서 알리익스프레스 상품 검색에 실패했습니다.");
+    throw new Error("모든 니치 키워드에서 알리익스프레스 상품(이미지 포함) 검색에 실패했습니다.");
   }
 
   console.log(`오늘의 주제: ${picked.keyword} / 카테고리: ${picked.category}`);
-  console.log(`선택된 상품: ${product.productName} (${product.price}원)`);
+  console.log(`비교 상품 ${products.length}개: ${products.map((p) => p.name).join(" / ")}`);
 
   const { title, content } = await generateArticle({
     keyword: picked.keyword,
     category: picked.category,
-    product,
+    products,
   });
   console.log(`생성된 제목: ${title}`);
 
   const status = process.env.PUBLISH_STATUS || "draft";
-  const result = await publishPost({ title, content, status, category: picked.category });
+  const result = await publishPost({
+    title,
+    content,
+    status,
+    category: picked.category,
+    featuredImageUrl: products[0].image, // 첫 번째 상품 이미지를 대표 이미지로
+  });
 
   console.log(`✅ 처리 완료 (${status}): ${result.URL || result.short_URL}`);
 }
