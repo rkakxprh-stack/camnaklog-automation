@@ -9,7 +9,7 @@ const path = require("path");
 const niches = require(path.join(__dirname, "..", "config", "niche-keywords.json"));
 const aliexpress = require("./aliexpress.js");
 const { generateArticle } = require("./generateArticle.js");
-const { publishPost } = require("./wordpress.js");
+const { publishPost, uploadMediaFromUrl } = require("./wordpress.js");
 
 const COMPARE_COUNT = 4; // 비교 박스에 넣을 상품 개수
 const MIN_VALID_PRODUCTS = 2; // 이 개수 미만이면 검색 결과가 부실하다고 보고 다음 키워드로 폴백
@@ -52,6 +52,19 @@ async function main() {
   console.log(`오늘의 주제: ${picked.keyword} / 카테고리: ${picked.category}`);
   console.log(`비교 상품 ${products.length}개: ${products.map((p) => p.name).join(" / ")}`);
 
+  // 상품 이미지를 워드프레스 미디어 라이브러리로 전부 사이드로드
+  // (알리익스프레스 CDN에 그대로 링크하는 대신 자체 호스팅 → 로딩 속도·안정성 개선)
+  let featuredMediaId = null;
+  for (let i = 0; i < products.length; i++) {
+    const uploaded = await uploadMediaFromUrl(products[i].image);
+    if (uploaded) {
+      products[i] = { ...products[i], image: uploaded.url };
+      if (i === 0) featuredMediaId = uploaded.id;
+    } else {
+      console.warn(`⚠️  ${products[i].name} 이미지 사이드로드 실패, 원본 URL 그대로 사용`);
+    }
+  }
+
   const { title, content, excerpt } = await generateArticle({
     keyword: picked.keyword,
     category: picked.category,
@@ -66,7 +79,7 @@ async function main() {
     excerpt,
     status,
     category: picked.category,
-    featuredImageUrl: products[0].image, // 첫 번째 상품 이미지를 대표 이미지로
+    featuredMediaId, // 이미 위에서 사이드로드했으니 재업로드하지 않음
   });
 
   console.log(`✅ 처리 완료 (${status}): ${result.URL || result.short_URL}`);
