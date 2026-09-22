@@ -230,11 +230,13 @@ async function generateArticle({ keyword, category, products }) {
   );
 
   const excerpt = buildExcerpt(result.content);
+  const tags = [keyword, "알리익스프레스", "해외직구"];
 
   return {
     title: result.title,
     content: `${DISCLOSURE}\n\n${result.content}\n\n${comparisonBlock}`,
     excerpt,
+    tags,
   };
 }
 
