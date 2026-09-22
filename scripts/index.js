@@ -65,7 +65,7 @@ async function main() {
     }
   }
 
-  const { title, content, excerpt } = await generateArticle({
+  const { title, content, excerpt, tags } = await generateArticle({
     keyword: picked.keyword,
     category: picked.category,
     products,
@@ -77,6 +77,7 @@ async function main() {
     title,
     content,
     excerpt,
+    tags,
     status,
     category: picked.category,
     featuredMediaId, // 이미 위에서 사이드로드했으니 재업로드하지 않음
