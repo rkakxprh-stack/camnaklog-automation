@@ -42,6 +42,56 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function escapeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * 같은 카테고리의 최근 발행 글을 찾아 "관련 글" 링크 목록으로 씁니다.
+ * 실패해도 전체 발행을 막지 않도록, 실패 시 빈 배열을 반환하고 경고만 남깁니다.
+ */
+async function getRelatedPosts({ category, limit = 3 }) {
+  if (!category) return [];
+  try {
+    const query = new URLSearchParams({
+      category,
+      number: String(limit),
+      status: "publish",
+    });
+    const result = await callPostsApi(`/posts/?${query.toString()}`, null, "GET");
+    return (result.posts || [])
+      .map((p) => ({ title: p.title, url: p.URL || p.short_URL }))
+      .filter((p) => p.title && p.url);
+  } catch (err) {
+    console.warn(`⚠️  관련 글 조회 실패 (건너뜁니다): ${err.message}`);
+    return [];
+  }
+}
+
+function buildRelatedPostsBlock(posts) {
+  if (!posts.length) return "";
+  const items = posts
+    .map(
+      (p) =>
+        `<!-- wp:list-item -->\n<li><a href="${p.url}">${escapeHtml(p.title)}</a></li>\n<!-- /wp:list-item -->`
+    )
+    .join("\n\n");
+
+  return `<!-- wp:heading {"level":2} -->
+<h2 class="wp-block-heading">이런 글도 함께 보면 좋아요</h2>
+<!-- /wp:heading -->
+
+<!-- wp:list -->
+<ul class="wp-block-list">
+${items}
+</ul>
+<!-- /wp:list -->`;
+}
+
 /**
  * 외부 이미지 URL(알리익스프레스 상품 이미지 등)을 워드프레스 미디어 라이브러리로
  * 사이드로드(sideload)해서 정식 미디어 아이템으로 등록합니다.
@@ -54,12 +104,12 @@ async function uploadMediaFromUrl(imageUrl) {
     const result = await callPostsApi("/media/new", body);
     const media = result?.media?.[0];
     if (!media || !media.ID) {
-      console.warn("⚠️  대표 이미지 업로드 응답에 media ID가 없습니다:", JSON.stringify(result));
+      console.warn("⚠️  이미지 업로드 응답에 media ID가 없습니다:", JSON.stringify(result));
       return null;
     }
-    return media.ID;
+    return { id: media.ID, url: media.URL || media.guid || imageUrl };
   } catch (err) {
-    console.warn(`⚠️  대표 이미지 업로드 실패 (계속 진행합니다): ${err.message}`);
+    console.warn(`⚠️  이미지 업로드 실패 (원본 URL로 계속 진행합니다): ${err.message}`);
     return null;
   }
 }
@@ -100,16 +150,24 @@ async function ensurePublished(postId) {
  * 워드프레스에 새 글 발행
  * @param {string} featuredImageUrl - 대표 이미지로 쓸 외부 이미지 URL (선택)
  */
-async function publishPost({ title, content, status = "draft", category, date, featuredImageUrl, excerpt }) {
-  let featuredMediaId = null;
-  if (featuredImageUrl) {
-    featuredMediaId = await uploadMediaFromUrl(featuredImageUrl);
+async function publishPost({ title, content, status = "draft", category, date, featuredImageUrl, featuredMediaId, excerpt }) {
+  let mediaId = featuredMediaId || null;
+  if (!mediaId && featuredImageUrl) {
+    const uploaded = await uploadMediaFromUrl(featuredImageUrl);
+    mediaId = uploaded?.id || null;
   }
 
-  const body = new URLSearchParams({ title, content, status });
+  let finalContent = content;
+  if (category) {
+    const related = await getRelatedPosts({ category, limit: 3 });
+    const relatedBlock = buildRelatedPostsBlock(related);
+    if (relatedBlock) finalContent = `${finalContent}\n\n${relatedBlock}`;
+  }
+
+  const body = new URLSearchParams({ title, content: finalContent, status });
   if (category) body.append("categories", category);
   if (date) body.append("date", date);
-  if (featuredMediaId) body.append("featured_image", String(featuredMediaId));
+  if (mediaId) body.append("featured_image", String(mediaId));
   if (excerpt) body.append("excerpt", excerpt);
 
   let result = await callPostsApi("/posts/new", body);
@@ -122,4 +180,4 @@ async function publishPost({ title, content, status = "draft", category, date, f
   return result;
 }
 
-module.exports = { publishPost };
+module.exports = { publishPost, uploadMediaFromUrl };
