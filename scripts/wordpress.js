@@ -150,7 +150,7 @@ async function ensurePublished(postId) {
  * 워드프레스에 새 글 발행
  * @param {string} featuredImageUrl - 대표 이미지로 쓸 외부 이미지 URL (선택)
  */
-async function publishPost({ title, content, status = "draft", category, date, featuredImageUrl, featuredMediaId, excerpt }) {
+async function publishPost({ title, content, status = "draft", category, date, featuredImageUrl, featuredMediaId, excerpt, tags }) {
   let mediaId = featuredMediaId || null;
   if (!mediaId && featuredImageUrl) {
     const uploaded = await uploadMediaFromUrl(featuredImageUrl);
@@ -169,6 +169,7 @@ async function publishPost({ title, content, status = "draft", category, date, f
   if (date) body.append("date", date);
   if (mediaId) body.append("featured_image", String(mediaId));
   if (excerpt) body.append("excerpt", excerpt);
+  if (tags && tags.length) body.append("tags", tags.join(","));
 
   let result = await callPostsApi("/posts/new", body);
   const postId = result.ID || result.id;
