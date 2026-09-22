@@ -1,91 +1,58 @@
 // index.js
-// 전체 자동화 흐름을 실행하는 메인 스크립트
+// 니치(해외직구 꿀템) 자동화 메인 스크립트
 // 실행: node scripts/index.js
 
-const { getTrendingKeywords } = require("./trending.js");
-const { classifyKeyword } = require("./classify.js");
-const { findMatch, loadQueue } = require("./linkQueue.js");
+const path = require("path");
+const niches = require(path.join(__dirname, "..", "config", "niche-keywords.json"));
+const aliexpress = require("./aliexpress.js");
 const { generateArticle } = require("./generateArticle.js");
 const { publishPost } = require("./wordpress.js");
-const aliexpress = require("./aliexpress.js");
 
-const MAX_KEYWORDS_TO_CHECK = 8;
-
-async function pickShoppableTrend(keywords) {
-  const candidates = keywords.slice(0, MAX_KEYWORDS_TO_CHECK);
-  for (const keyword of candidates) {
-    const category = await classifyKeyword(keyword);
-    if (category) {
-      console.log(`✅ "${keyword}" → 적합 (${category})`);
-      return { keyword, category };
-    }
-    console.log(`⏭️  "${keyword}" → 쇼핑 콘텐츠로 부적합, 다음 키워드 확인`);
-  }
-  return null;
-}
-
-function pickFallbackFromQueue() {
-  const queue = loadQueue();
-  if (queue.length === 0) return null;
-  const entry = queue[Math.floor(Math.random() * queue.length)];
-  return { keyword: entry.keyword, category: "구매가이드", queuedProduct: entry };
+function pickTodayIndex(length) {
+  const start = new Date(new Date().getFullYear(), 0, 0);
+  const diff = new Date() - start;
+  const dayOfYear = Math.floor(diff / 1000 / 60 / 60 / 24);
+  return dayOfYear % length;
 }
 
 async function main() {
-  const keywords = await getTrendingKeywords();
-  if (keywords.length === 0) {
-    throw new Error("구글 트렌드에서 키워드를 가져오지 못했습니다.");
-  }
+  const startIdx = pickTodayIndex(niches.length);
+  let picked = null;
+  let product = null;
 
-  let picked = await pickShoppableTrend(keywords);
-  let queuedProduct = null;
+  // 오늘 키워드부터 시작해서, 상품 검색이 안 되면 다음 키워드로 순차 폴백
+  for (let i = 0; i < niches.length; i++) {
+    const candidate = niches[(startIdx + i) % niches.length];
+    console.log(`검색 시도: "${candidate.keyword}" (${candidate.category})`);
+    try {
+      const results = await aliexpress.searchProducts(candidate.keyword, 5);
+      if (results.length > 0) {
+        picked = candidate;
+        product = { productName: results[0].name, price: results[0].price, url: results[0].url };
+        break;
+      }
+      console.log("검색 결과 없음 → 다음 키워드 시도");
+    } catch (err) {
+      console.warn(`⚠️  검색 실패: ${err.message}`);
+    }
+  }
 
   if (!picked) {
-    console.log("⚠️  오늘 트렌드 중 쇼핑 관련 키워드를 찾지 못했습니다. 등록된 상품 목록에서 대체 주제를 고릅니다.");
-    picked = pickFallbackFromQueue();
-    if (!picked) {
-      throw new Error(
-        "쇼핑 관련 트렌드도 없고, config/link-queue.json에 등록된 상품도 없어 오늘은 글을 만들 수 없습니다."
-      );
-    }
-    queuedProduct = picked.queuedProduct;
+    throw new Error("모든 니치 키워드에서 알리익스프레스 상품 검색에 실패했습니다.");
   }
 
-  const { keyword, category } = picked;
-  console.log(`오늘의 주제: ${keyword} / 카테고리: ${category}`);
+  console.log(`오늘의 주제: ${picked.keyword} / 카테고리: ${picked.category}`);
+  console.log(`선택된 상품: ${product.productName} (${product.price}원)`);
 
-  let matchedProduct = queuedProduct ? { ...queuedProduct, source: "coupang" } : null;
-
-  if (!matchedProduct && category === "해외직구 큐레이션" && process.env.ALIEXPRESS_APP_KEY) {
-    try {
-      const results = await aliexpress.searchProducts(keyword, 5);
-      if (results.length > 0) {
-        const p = results[0];
-        matchedProduct = { productName: p.name, price: p.price, url: p.url, source: "aliexpress" };
-        console.log(`알리익스프레스 자동 매칭됨: ${matchedProduct.productName}`);
-      }
-    } catch (err) {
-      console.warn(`⚠️  알리익스프레스 검색 실패 (${err.message})`);
-    }
-  }
-
-  if (!matchedProduct) {
-    matchedProduct = findMatch(keyword);
-    if (matchedProduct) {
-      matchedProduct = { ...matchedProduct, source: "coupang" };
-      console.log(`쿠팡 링크 매칭됨: ${matchedProduct.productName}`);
-    } else {
-      console.log("매칭되는 링크 없음 → 링크 없이 정보성 글로 작성");
-    }
-  }
-
-  const { title, content } = await generateArticle({ keyword, category, product: matchedProduct });
+  const { title, content } = await generateArticle({
+    keyword: picked.keyword,
+    category: picked.category,
+    product,
+  });
   console.log(`생성된 제목: ${title}`);
 
-  // 지금은 트래픽 확보가 우선이라, 쿠팡 링크 유무와 상관없이 PUBLISH_STATUS를 따름
   const status = process.env.PUBLISH_STATUS || "draft";
-  
-  const result = await publishPost({ title, content, status, category });
+  const result = await publishPost({ title, content, status, category: picked.category });
 
   console.log(`✅ 처리 완료 (${status}): ${result.URL || result.short_URL}`);
 }
