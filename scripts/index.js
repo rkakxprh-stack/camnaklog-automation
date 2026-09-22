@@ -52,7 +52,7 @@ async function main() {
   console.log(`오늘의 주제: ${picked.keyword} / 카테고리: ${picked.category}`);
   console.log(`비교 상품 ${products.length}개: ${products.map((p) => p.name).join(" / ")}`);
 
-  const { title, content } = await generateArticle({
+  const { title, content, excerpt } = await generateArticle({
     keyword: picked.keyword,
     category: picked.category,
     products,
@@ -63,6 +63,7 @@ async function main() {
   const result = await publishPost({
     title,
     content,
+    excerpt,
     status,
     category: picked.category,
     featuredImageUrl: products[0].image, // 첫 번째 상품 이미지를 대표 이미지로
