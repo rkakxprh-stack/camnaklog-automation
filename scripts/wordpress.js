@@ -185,4 +185,28 @@ async function publishPost({ title, content, status = "draft", category, date, f
   return result;
 }
 
-module.exports = { publishPost, uploadMediaFromUrl };
+/**
+ * 이미 발행(또는 초안)된 글에 붙어 있는 태그 이름 목록을 가져옵니다.
+ * 니치 키워드를 태그로 붙이고 있으므로, 이 목록에 있는 키워드는 이미 글로 쓴 주제입니다.
+ * 조회에 실패하면 빈 Set을 반환해서 발행 자체는 막지 않습니다.
+ */
+async function getUsedKeywords() {
+  try {
+    const query = new URLSearchParams({
+      number: "100",
+      status: "publish,draft",
+      fields: "ID,tags",
+    });
+    const result = await callPostsApi(`/posts/?${query.toString()}`, null, "GET");
+    const used = new Set();
+    for (const post of result.posts || []) {
+      for (const name of Object.keys(post.tags || {})) used.add(name);
+    }
+    return used;
+  } catch (err) {
+    console.warn(`⚠️  기존 키워드 조회 실패 (중복 확인 없이 진행합니다): ${err.message}`);
+    return new Set();
+  }
+}
+
+module.exports = { publishPost, uploadMediaFromUrl, getUsedKeywords };
