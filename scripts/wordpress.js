@@ -97,19 +97,23 @@ ${items}
  * 사이드로드(sideload)해서 정식 미디어 아이템으로 등록합니다.
  * 실패해도 전체 발행을 막지 않도록, 실패 시 null을 반환하고 경고만 남깁니다.
  */
-async function uploadMediaFromUrl(imageUrl) {
+async function uploadMediaFromUrl(imageUrl, attempt = 1) {
   try {
     const body = new URLSearchParams();
     body.append("media_urls[]", imageUrl);
     const result = await callPostsApi("/media/new", body);
     const media = result?.media?.[0];
     if (!media || !media.ID) {
-      console.warn("⚠️  이미지 업로드 응답에 media ID가 없습니다:", JSON.stringify(result));
-      return null;
+      throw new Error(`업로드 응답에 media ID가 없습니다: ${JSON.stringify(result)}`);
     }
     return { id: media.ID, url: media.URL || media.guid || imageUrl };
   } catch (err) {
-    console.warn(`⚠️  이미지 업로드 실패 (원본 URL로 계속 진행합니다): ${err.message}`);
+    if (attempt < 3) {
+      console.warn(`⚠️  이미지 업로드 실패 (${attempt}번째), ${attempt * 2}초 후 재시도: ${err.message}`);
+      await sleep(attempt * 2000);
+      return uploadMediaFromUrl(imageUrl, attempt + 1);
+    }
+    console.warn(`⚠️  이미지 업로드 최종 실패 (원본 URL로 계속 진행합니다): ${err.message}`);
     return null;
   }
 }
