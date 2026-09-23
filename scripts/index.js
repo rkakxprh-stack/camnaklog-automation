@@ -56,6 +56,7 @@ async function main() {
   // (알리익스프레스 CDN에 그대로 링크하는 대신 자체 호스팅 → 로딩 속도·안정성 개선)
   let featuredMediaId = null;
   for (let i = 0; i < products.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 1000)); // 연속 업로드 부담 완화
     const uploaded = await uploadMediaFromUrl(products[i].image);
     if (uploaded) {
       products[i] = { ...products[i], image: uploaded.url };
