@@ -21,6 +21,19 @@ function escapeHtml(str = "") {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * 알리익스프레스 상품명 앞에 붙는 판매자/프로모션 태그를 떼어냅니다.
+ * 예: "[~ 신제품 FDDT] LED 실외 방수 벽등" → "LED 실외 방수 벽등"
+ *     "【~ 신제품 FDDT】15개 LED 요정 전구" → "15개 LED 요정 전구"
+ */
+function cleanProductName(name = "") {
+  const cleaned = String(name)
+    .replace(/^(\s*[\[【(（〔][^\]】)）〕]*[\]】)）〕]\s*)+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || String(name).trim(); // 다 지워지면 원래 이름 유지
+}
+
 function truncate(str = "", max = 40) {
   const s = String(str);
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
@@ -76,7 +89,7 @@ ${columns}
 
 function buildSystemPrompt({ keyword, category, products }) {
   const productLines = products
-    .map((p, i) => `${i + 1}. ${p.productName || p.name} (약 ${formatPrice(p.price)})`)
+    .map((p, i) => `${i + 1}. ${cleanProductName(p.productName || p.name)} (약 ${formatPrice(p.price)})`)
     .join("\n");
 
   return `너는 "핫딜로그"라는 해외직구 꿀템 블로그의 필자야. 이번 글의 카테고리는 "${category}", 소재는 "${keyword}"이고, 아래 ${products.length}개 상품을 놓고 비교하며 소개하는 글을 쓸 거야.
@@ -222,7 +235,7 @@ async function generateArticle({ keyword, category, products }) {
 
   const comparisonBlock = buildComparisonBlock(
     products.map((p) => ({
-      name: p.productName || p.name,
+      name: cleanProductName(p.productName || p.name),
       price: p.price,
       image: p.image,
       url: p.url,
