@@ -57,13 +57,17 @@ function escapeHtml(str = "") {
 async function getRelatedPosts({ category, limit = 3 }) {
   if (!category) return [];
   try {
+    // 주의: API의 category 파라미터는 슬러그만 받기 때문에 한글 카테고리 이름을 넘기면
+    // 항상 빈 결과가 나옵니다. 최근 글을 넉넉히 가져와서 카테고리 이름으로 직접 거릅니다.
     const query = new URLSearchParams({
-      category,
-      number: String(limit),
+      number: "30",
       status: "publish",
+      fields: "ID,title,URL,short_URL,categories",
     });
     const result = await callPostsApi(`/posts/?${query.toString()}`, null, "GET");
     return (result.posts || [])
+      .filter((p) => Object.keys(p.categories || {}).includes(category))
+      .slice(0, limit)
       .map((p) => ({ title: p.title, url: p.URL || p.short_URL }))
       .filter((p) => p.title && p.url);
   } catch (err) {
