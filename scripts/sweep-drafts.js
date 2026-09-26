@@ -5,9 +5,6 @@
 //
 // 동작: 최근 N시간 이내에 수정된 draft 상태 글을 전부 찾아서 강제로 publish로 되돌립니다.
 // 전제: 이 블로그는 100% 자동 발행 운영이라 "일부러 draft로 남겨둔 글"이 없습니다.
-// 만약 나중에 수동으로 초안을 쓰는 용도로도 쓰기 시작하면 이 전제가 깨지니,
-// 그때는 LOOKBACK_HOURS를 줄이거나, 자동 발행 글에만 붙는 태그/카테고리로
-// 구분하는 로직을 추가하세요.
 
 const SITE = process.env.WPCOM_SITE;
 const LOOKBACK_HOURS = Number(process.env.SWEEP_LOOKBACK_HOURS || 6);
