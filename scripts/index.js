@@ -24,17 +24,34 @@ function pickTodayIndex(length) {
 /**
  * 후보 키워드를 순서대로 시도해서, 상품이 충분히 검색되는 첫 키워드를 고릅니다.
  */
+/**
+ * 상품명이 키워드와 관련 있는지 확인합니다.
+ * match 목록의 단어 중 하나라도 상품명에 들어 있어야 관련 상품으로 봅니다.
+ * (알리 검색은 가끔 전혀 상관없는 인기 상품을 섞어서 돌려주기 때문)
+ */
+function isRelevant(product, candidate) {
+  const words = candidate.match || [];
+  if (words.length === 0) return true;
+  const name = String(product.name || "").toLowerCase();
+  return words.some((w) => name.includes(String(w).toLowerCase()));
+}
+
 async function findNicheWithProducts(candidates) {
   for (const candidate of candidates) {
-    console.log(`검색 시도: "${candidate.keyword}" (${candidate.category})`);
+    // 알리 검색은 한국어를 잘 못 알아들어서, 영어 검색어가 있으면 영어로 검색합니다.
+    // (상품명은 aliexpress.js에서 target_language=KO로 한국어로 받아옵니다)
+    const query = candidate.search || candidate.keyword;
+    console.log(`검색 시도: "${candidate.keyword}" → "${query}" (${candidate.category})`);
     try {
-      const results = await aliexpress.searchProducts(candidate.keyword, 8);
-      const valid = results.filter((p) => p.name && p.price && p.url && p.image);
+      const results = await aliexpress.searchProducts(query, 20);
+      const complete = results.filter((p) => p.name && p.price && p.url && p.image);
+      const relevant = complete.filter((p) => isRelevant(p, candidate));
+      console.log(`검색 결과 ${results.length}개 → 정보 완전 ${complete.length}개 → 관련 상품 ${relevant.length}개`);
 
-      if (valid.length >= MIN_VALID_PRODUCTS) {
-        return { picked: candidate, products: valid.slice(0, COMPARE_COUNT) };
+      if (relevant.length >= MIN_VALID_PRODUCTS) {
+        return { picked: candidate, products: relevant.slice(0, COMPARE_COUNT) };
       }
-      console.log(`검색 결과 부족(${valid.length}개) → 다음 키워드 시도`);
+      console.log(`관련 상품 부족(${relevant.length}개) → 다음 키워드 시도`);
     } catch (err) {
       console.warn(`⚠️  검색 실패: ${err.message}`);
     }
